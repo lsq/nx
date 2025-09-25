@@ -1,11 +1,14 @@
 name: publish
 
 on:
+  push:
+    branches:
+      - master
   # Automated schedule - canary releases from master
-  schedule:
-    - cron: "0 20 * * 1-5" # Monday - Friday, at 20:00 UTC (8pm UTC)
-  release:
-    types: [ published ]
+  # schedule:
+    # - cron: "0 20 * * 1-5" # Monday - Friday, at 20:00 UTC (8pm UTC)
+  # release:
+    # types: [ published ]
 
 # Dynamically generate the display name for the GitHub UI based on the event type and inputs
 run-name: ${{ github.event.inputs.pr && format('PR Release for {0}', github.event.inputs.pr) || github.event_name == 'schedule' && 'Canary Release' || github.event_name == 'workflow_dispatch' && !github.event.inputs.pr && 'Release Dry-Run' || github.ref_name }}
@@ -75,7 +78,7 @@ jobs:
           - host: windows-latest
             setup: |-
               choco install openjdk --version=21.0.0 -y
-              rustup target add aarch64-pc-windows-msvc
+              rustup target add x86_64-pc-windows-msvc
             build: |
               export JAVA_HOME="C:\Program Files\OpenJDK\jdk-21"
               export PATH="$JAVA_HOME\bin:$PATH"
@@ -327,6 +330,75 @@ jobs:
             packages/nx/src/native/*.wasm
           if-no-files-found: error
 
+  build-msys2:
+    name: Build Msys2
+    strategy:
+      matrix:
+        sys: [UCRT64]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: taiki-e/checkout-action@b13d20b7cda4e2f325ef19895128f7ff735c0b3d # v1.3.1
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.sys }}
+          update: true
+          install: >-
+            base-devel binutils
+          pacboy: >-
+            rustup:p
+            yarn:p
+            toolchain:p
+      - name: Install JDK
+        shell: pwsh
+        run: |
+          choco install openjdk --version=21.0.0 -y
+      - name: Install
+        run: |
+          which cargo
+          which node && node -p "process.report.getReport().header.osName"
+          which rustup && rustup default
+          rustup set default-host x86_64-pc-windows-gnu
+          rustup install stable-x86_64-pc-windows-gnu
+          rustVersion=$(sed -n 's/channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)
+          rustup install "$rustVersion"
+          rustup default stable-x86_64-pc-windows-gnu
+          rustup override set stable-x86_64-pc-windows-gnu
+          rustup show
+          rustup target add x86_64-pc-windows-gnu 
+          which npm && which corepack
+          corepack enable pnpm
+          # npm install -g pnpm
+          echo $?
+          # npm install -g pnpm@latest-10
+          ls $MINGW_PREFIX/lib/node_modules/corepack/dist
+          # echo $?
+      - name: Build
+        run: |
+          # npm install -g corepack
+          # corepack enable
+          export JAVA_HOME="/C/Program Files/OpenJDK/jdk-21"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          java -version
+          which npm
+          which pnpm
+          sed -i 's|\(@napi-rs/cli": *\).*,$|\1"https://github.com/lsq/napi-rs/releases/download/%40napi-rs%2Fcli%403.2.0/napi-rs-cli-3.2.0.tgz",|' package.json
+          # sed -i 's|\(@napi-rs/wasm-runtime": *"\).*"|\1https://github.com/lsq/napi-rs/releases/download/%40napi-rs%2Fwasm-runtime%401.0.5/napi-rs-wasm-runtime-1.0.5.tgz"|' package.json 
+          pnpm install -no-frozen-lockfile
+          pnpm nx run-many --target=build-native -- --target=x86_64-pc-windows-gnu
+          ls ./packages/nx/src/native/
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bindings-x86_64-pc-windows-gnu
+          path: |
+            packages/nx/src/native/*.node
+            packages/nx/src/native/*.wasm
+          if-no-files-found: error
+
   build-freebsd:
     needs: [ resolve-required-data ]
     if: ${{ github.repository_owner == 'nrwl' }}
@@ -443,7 +515,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: ${{ github.repository_owner == 'nrwl' }}
+    # if: ${{ github.repository_owner == 'nrwl' }}
     name: Publish
     runs-on: ubuntu-latest
     environment: npm-registry
@@ -452,9 +524,10 @@ jobs:
       contents: write
       pull-requests: write
     needs:
-      - resolve-required-data
-      - build-freebsd
-      - build
+      # - resolve-required-data
+      # - build-freebsd
+      # - build
+      - build-msys2
     env:
       GH_TOKEN: ${{ github.token }}
     steps:

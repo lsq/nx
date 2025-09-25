@@ -95,7 +95,8 @@
     "@nx/nx-linux-x64-gnu": "*",
     "@nx/nx-linux-x64-musl": "*",
     "@nx/nx-win32-arm64-msvc": "*",
-    "@nx/nx-win32-x64-msvc": "*"
+    "@nx/nx-win32-x64-msvc": "*",
+    "@nx/nx-win32-x64-gnu": "*"
   },
   "nx-migrations": {
     "migrations": "./migrations.json",
@@ -159,6 +160,7 @@
     "targets": [
       "x86_64-unknown-linux-gnu",
       "x86_64-pc-windows-msvc",
+      "x86_64-pc-windows-gnu",
       "x86_64-apple-darwin",
       "aarch64-apple-darwin",
       "aarch64-unknown-linux-gnu",
